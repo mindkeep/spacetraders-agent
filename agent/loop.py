@@ -3,8 +3,12 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone
 
 from .reasoning import plan_next_intent
+from .persistence.sqlite import SQLitePersistence
+from .state import refresh_state
+from .executor import execute_intent
 
 
 DEFAULT_INPUT_PATH = Path("input.md")
@@ -32,13 +36,24 @@ def run_loop(
     this will enforce cooldowns, persistence, and scheduling.
     """
 
+    store = SQLitePersistence(Path("agent.db"))
+    store.connect()
     last_seen = None
     while True:
         advisory = _read_input(input_path)
         if advisory != last_seen:
             last_seen = advisory
-            intent = plan_next_intent(advisory_input=advisory)
-            # TODO: validate intent against game state and execute via API client.
+            # Refresh authoritative state
+            snapshot = refresh_state()
+            ts = datetime.now(timezone.utc).isoformat()
+            store.save_state_snapshot(ts, payload=str(snapshot))
+            if advisory:
+                store.append_log(ts, "advisory", advisory)
+
+            intent = plan_next_intent(state_snapshot=snapshot, advisory_input=advisory)
+            store.append_log(ts, "intent", intent.summary())
+            # Execute intent (stubbed)
+            execute_intent(intent, store)
             print(intent.summary())  # Temporary signal for wiring tests.
 
         if once:
