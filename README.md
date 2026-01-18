@@ -62,3 +62,40 @@ It is not:
 Early development. Expect rapid iteration and design changes.
 
 If you’re curious about the internal architecture and design rationale, see [`design.md`](design.md).
+
+## Setup
+
+This project uses [uv](https://github.com/astral-sh/uv) for dependency and virtual environment management.
+
+```bash
+# Create/refresh the environment and install dependencies
+uv sync
+```
+
+## Generated API client
+
+We generate a typed HTTP client from the SpaceTraders OpenAPI spec using `openapi-python-client`.
+
+```bash
+# Regenerate client code
+./tools/generate_client.sh
+```
+
+The output lands in `codegen/api_client/`. Regenerate after upstream spec changes.
+
+## Running the agent (headless)
+
+The agent is intended to run without a UI and watch `input.md` for human advisory guidance.
+
+```bash
+uv run python -m agent.loop --help  # (once wiring is added)
+
+# For now, run the stub loop once to validate wiring
+uv run python -c "from agent.loop import run_loop; run_loop(once=True)"
+```
+
+## Testing
+
+```bash
+uv run pytest
+```

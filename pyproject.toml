@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spacetraders-agent"
+version = "0.1.0"
+description = "Autonomous-but-advisable SpaceTraders agent (headless)."
+authors = [{ name = "mindkeep" }]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.26",
+  "openapi-python-client>=0.28.1",
+  "pydantic>=2.5",
+  "pytest>=9.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "openapi-python-client>=0.21",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]

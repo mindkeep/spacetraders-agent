@@ -120,6 +120,12 @@ Humans are treated as strategic advisors, not operators.
 
 This preserves agent autonomy while still allowing meaningful guidance.
 
+### Headless operation and advisory input
+
+* The process runs without a UI and is expected to stay up as a long-running service.
+* Human guidance arrives via `input.md`; the process should watch/tail this file for changes and ingest new advisory text when it appears.
+* Any future UI can layer on top, but `input.md` remains the canonical advisory channel so the agent can run unattended.
+
 ---
 
 ## Intent-based control (not tool calls)
@@ -142,6 +148,12 @@ Each intent includes:
 Python translates intents into concrete API actions.
 
 This indirection keeps execution deterministic and debuggable.
+
+### Persistence and logging
+
+* Authoritative game state, operational logs, and strategy notes are stored in SQLite for durability and easy inspection.
+* Treat SQLite as the single source of truth for persisted data; any file-based logs are secondary/derived artifacts.
+* Persistence should cover both immutable history and editable strategy notes to avoid drift between memory and reality.
 
 ---
 
