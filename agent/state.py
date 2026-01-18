@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 from .spacetraders_client import APIResult, build_client, fetch_my_agent, fetch_my_ships
 
 
-def refresh_state() -> Dict[str, Any]:
+def refresh_state(logger: Optional[logging.Logger] = None) -> Dict[str, Any]:
     """Fetch authoritative state from SpaceTraders API (if configured).
 
     Returns a dict summary safe for prompt inclusion and persistence.
@@ -22,13 +23,13 @@ def refresh_state() -> Dict[str, Any]:
         snapshot["errors"].append("No SPACETRADERS_TOKEN configured or client unavailable")
         return snapshot
 
-    agent_res: APIResult = fetch_my_agent(client)
+    agent_res: APIResult = fetch_my_agent(client, logger=logger)
     if agent_res.ok and agent_res.json is not None:
         snapshot["agent"] = agent_res.json.get("data")
     else:
         snapshot["errors"].append(f"agent: {agent_res.error or agent_res.status}")
 
-    ships_res: APIResult = fetch_my_ships(client, page=1, limit=20)
+    ships_res: APIResult = fetch_my_ships(client, page=1, limit=20, logger=logger)
     if ships_res.ok and ships_res.json is not None:
         snapshot["ships"] = ships_res.json.get("data")
     else:

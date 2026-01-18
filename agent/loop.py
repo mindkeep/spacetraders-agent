@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timezone
 
-from .reasoning import plan_next_intent
-from .persistence.sqlite import SQLitePersistence
-from .state import refresh_state
 from .executor import execute_intent
+from .persistence.sqlite import SQLitePersistence
+from .reasoning import plan_next_intent
+from .state import refresh_state
 
 
 DEFAULT_INPUT_PATH = Path("input.md")
@@ -28,6 +29,7 @@ def run_loop(
     input_path: Path = DEFAULT_INPUT_PATH,
     poll_interval_sec: float = DEFAULT_POLL_INTERVAL_SEC,
     once: bool = False,
+    logger: Optional[logging.Logger] = None,
 ) -> None:
     """Headless control loop stub.
 
@@ -38,23 +40,32 @@ def run_loop(
 
     store = SQLitePersistence(Path("agent.db"))
     store.connect()
+    log = logger or logging.getLogger("agent.loop")
+    log.info("Starting run_loop input=%s poll=%.2fs once=%s", input_path, poll_interval_sec, once)
+
     last_seen = None
     while True:
         advisory = _read_input(input_path)
         if advisory != last_seen:
             last_seen = advisory
+            log.info("Advisory updated len=%s", len(advisory) if advisory else 0)
             # Refresh authoritative state
-            snapshot = refresh_state()
+            snapshot = refresh_state(logger=log)
             ts = datetime.now(timezone.utc).isoformat()
             store.save_state_snapshot(ts, payload=str(snapshot))
             if advisory:
                 store.append_log(ts, "advisory", advisory)
+                log.info("Logged advisory at %s", ts)
+            if snapshot.get("errors"):
+                log.warning("State errors: %s", snapshot.get("errors"))
+            else:
+                log.info("State refreshed (agent=%s ships=%s)", bool(snapshot.get("agent")), len(snapshot.get("ships") or [] if snapshot.get("ships") else 0))
 
-            intent = plan_next_intent(state_snapshot=snapshot, advisory_input=advisory)
+            intent = plan_next_intent(state_snapshot=snapshot, advisory_input=advisory, logger=log)
             store.append_log(ts, "intent", intent.summary())
+            log.info("Selected intent: %s", intent.summary())
             # Execute intent (stubbed)
-            execute_intent(intent, store)
-            print(intent.summary())  # Temporary signal for wiring tests.
+            execute_intent(intent, store, logger=log)
 
         if once:
             break

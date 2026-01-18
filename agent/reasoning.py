@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
-import os
 import json
+import logging
+import os
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -27,7 +28,26 @@ INTENT_JSON_SCHEMA = {
 }
 
 
-def _llm_plan(state_snapshot: Optional[Dict[str, Any]], strategy_notes: Optional[str], advisory_input: Optional[str]) -> Optional[Intent]:
+def _strip_markdown_fences(content: str) -> str:
+    """Remove markdown code fences (```json, ```, etc) from response."""
+    content = content.strip()
+    # Strip opening fence
+    if content.startswith("```"):
+        first_newline = content.find("\n")
+        if first_newline != -1:
+            content = content[first_newline + 1:]
+    # Strip closing fence
+    if content.endswith("```"):
+        content = content[:-3]
+    return content.strip()
+
+
+def _llm_plan(
+    state_snapshot: Optional[Dict[str, Any]],
+    strategy_notes: Optional[str],
+    advisory_input: Optional[str],
+    logger: Optional[logging.Logger] = None,
+) -> Optional[Intent]:
     if ollama is None:
         return None
 
@@ -49,11 +69,17 @@ def _llm_plan(state_snapshot: Optional[Dict[str, Any]], strategy_notes: Optional
     }
 
     try:
+        if logger:
+            logger.info("LLM request (model=%s base=%s): system=%s user=%s", model, base_url or "default", system, json.dumps(user))
         resp = client.chat(model=model, messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(user)},
         ])
         content = resp.get("message", {}).get("content", "")
+        if logger:
+            logger.info("LLM response: %s", content)
+        # Strip markdown fences if present
+        content = _strip_markdown_fences(content)
         data = json.loads(content)
         intent_type_str = str(data.get("intent_type", "")).lower()
         if intent_type_str not in [t.value for t in IntentType]:
@@ -66,7 +92,9 @@ def _llm_plan(state_snapshot: Optional[Dict[str, Any]], strategy_notes: Optional
             details=details,
             advisory_source="input.md" if advisory_input else None,
         )
-    except Exception:
+    except Exception as exc:
+        if logger:
+            logger.warning("LLM planning failed: %s", exc)
         return None
 
 
@@ -74,6 +102,7 @@ def plan_next_intent(
     state_snapshot: Optional[Dict[str, Any]] = None,
     strategy_notes: Optional[str] = None,
     advisory_input: Optional[str] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> Intent:
     """Select the next high-level intent.
 
@@ -85,7 +114,7 @@ def plan_next_intent(
 
     # Try LLM first if available
 
-    llm_intent = _llm_plan(state_snapshot, strategy_notes, advisory_input)
+    llm_intent = _llm_plan(state_snapshot, strategy_notes, advisory_input, logger=logger)
     if llm_intent is not None:
         return llm_intent
 
@@ -97,6 +126,9 @@ def plan_next_intent(
         "notes_present": bool(strategy_notes),
         "advisory_present": bool(advisory_input),
     }
+
+    if logger:
+        logger.info("Using fallback intent stub")
 
     return Intent(
         intent_type=IntentType.GATHER_MARKET_DATA,
