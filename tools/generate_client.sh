@@ -11,6 +11,6 @@ SPEC_URL="https://raw.githubusercontent.com/SpaceTradersAPI/api-docs/refs/heads/
 
 uv run openapi-python-client generate \
   --url "$SPEC_URL" \
-  --config .openapi-python-client-config.yaml \
+  --config codegen/openapi-python-client-config.yaml \
   --output-path codegen/api_client \
   --overwrite
