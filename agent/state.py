@@ -6,6 +6,42 @@ from typing import Any, Dict, Optional
 from .spacetraders_client import APIResult, build_client, fetch_my_agent, fetch_my_ships
 
 
+def analyze_fleet_readiness(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyze ship readiness from state snapshot.
+
+    Returns a dict with:
+    - total_ships: count of all ships
+    - idle_ships: ships ready for new actions (docked, not in transit)
+    - busy_ships: ships executing actions (in transit, refueling, etc)
+    - ready_for_action: bool, true if any ships are idle
+    """
+    ships = snapshot.get("ships") or []
+    idle_count = 0
+    busy_count = 0
+
+    for ship in ships:
+        if isinstance(ship, dict):
+            # Check nav status: common patterns are "IN_TRANSIT", "DOCKED", "ANCHORED"
+            nav_status = ship.get("nav", {}).get("status", "").upper()
+            
+            # Ship is idle if it's docked or anchored (not actively moving)
+            if nav_status in ("DOCKED", "ANCHORED"):
+                idle_count += 1
+            elif nav_status in ("IN_TRANSIT", ""):
+                busy_count += 1
+            else:
+                # Default to idle if we can't determine status
+                idle_count += 1
+
+    total = len(ships)
+    return {
+        "total_ships": total,
+        "idle_ships": idle_count,
+        "busy_ships": busy_count,
+        "ready_for_action": idle_count > 0,
+    }
+
+
 def refresh_state(logger: Optional[logging.Logger] = None) -> Dict[str, Any]:
     """Fetch authoritative state from SpaceTraders API (if configured).
 

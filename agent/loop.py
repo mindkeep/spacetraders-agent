@@ -9,7 +9,7 @@ from typing import Optional
 from .executor import execute_intent
 from .persistence.sqlite import SQLitePersistence
 from .reasoning import plan_next_intent
-from .state import refresh_state
+from .state import refresh_state, analyze_fleet_readiness
 
 
 DEFAULT_INPUT_PATH = Path("input.md")
@@ -60,14 +60,28 @@ def run_loop(
                 log.warning("State errors: %s", snapshot.get("errors"))
             else:
                 log.info("State refreshed (agent=%s ships=%s)", bool(snapshot.get("agent")), len(snapshot.get("ships") or [] if snapshot.get("ships") else 0))
+            
+            # Analyze fleet readiness
+            readiness = analyze_fleet_readiness(snapshot)
+            log.info("Fleet readiness: total=%d idle=%d busy=%d ready=%s", 
+                     readiness["total_ships"], readiness["idle_ships"], readiness["busy_ships"], 
+                     readiness["ready_for_action"])
 
             intent = plan_next_intent(state_snapshot=snapshot, advisory_input=advisory, logger=log)
             store.append_log(ts, "intent", intent.summary())
             log.info("Selected intent: %s", intent.summary())
             # Execute intent (stubbed)
             execute_intent(intent, store, logger=log)
-
+            
+            # Adjust next sleep based on fleet readiness
+            # If ships are idle, check sooner; if busy, we can wait longer
+            effective_poll_interval = poll_interval_sec
+            if not readiness["ready_for_action"]:
+                # Ships are busy; increase wait time since we can't act yet
+                effective_poll_interval = min(poll_interval_sec * 2, 60.0)
+                log.info("Ships busy; increasing poll interval to %.1fs", effective_poll_interval)
+        
         if once:
             break
-
+        
         time.sleep(poll_interval_sec)
