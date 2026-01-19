@@ -74,14 +74,17 @@ uv sync
 
 ## Generated API client
 
-We generate a typed HTTP client from the SpaceTraders OpenAPI spec using `openapi-python-client`.
+We generate a typed HTTP client from the SpaceTraders OpenAPI spec using OpenAPI Generator (`-g python`).
 
 ```bash
-# Regenerate client code
+# Regenerate client code (requires openapi-generator-cli installed via pip)
 ./tools/generate_client.sh
+
+# Install the generated client's runtime deps (needed for tests/runtime)
+uv pip install -r codegen/spacetraders_api_client/requirements.txt
 ```
 
-The output lands in `codegen/api_client/`. Regenerate after upstream spec changes.
+The output lands in `codegen/spacetraders_api_client/`. At runtime we load the package directly from that directory (see `agent/spacetraders_client.py`). Regenerate after upstream spec changes.
 
 ## Running the agent (headless)
 
