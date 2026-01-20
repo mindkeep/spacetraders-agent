@@ -12,16 +12,19 @@ requires-python = ">=3.11"
 dependencies = [
   "httpx>=0.26",
   "ollama>=0.6.1",
-  "openapi-generator-cli>=7.18.0",
-  "pydantic>=2.5",
+  "pydantic>=2",
   "pytest>=9.0.2",
+  "python-dateutil>=2.8.2",
   "python-dotenv>=1.2.1",
+  "rich>=14.2.0",
+  "typing-extensions>=4.7.1",
+  "urllib3>=2.1.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=7.4",
-  "openapi-python-client>=0.21",
+  "openapi-generator-cli>=7.18.0",
 ]
 
 [tool.pytest.ini_options]
