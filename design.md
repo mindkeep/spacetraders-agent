@@ -64,7 +64,8 @@ At a high level, the agent operates in a continuous loop:
 7. Persist state
    Notes, logs, and state are saved for the next iteration.
 
-Python—not the LLM—controls timing, cooldowns, and loop scheduling.
+8. Determine wait time
+   There will be times while ships are in transit or not available that there is nothing for the agent to do. Given this, the LLM may ask to wait longer before the next iteration, but we should still poll game state occassionally.
 
 ---
 
