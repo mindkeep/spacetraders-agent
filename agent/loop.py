@@ -10,12 +10,13 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
 from jsonref import load_uri
+from rich.console import Console
 
 from .persistence.sqlite import SQLitePersistence
 from .state import get_strategy_notes, save_strategy_notes, get_recent_log_entries
@@ -34,6 +35,8 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
+
+console = Console()
 
 DEFAULT_INPUT_PATH = Path("input.md")
 DEFAULT_POLL_INTERVAL_SEC = 10.0
@@ -199,6 +202,7 @@ def run_loop(
     poll_interval_sec: float = DEFAULT_POLL_INTERVAL_SEC,
     once: bool = False,
     logger: Optional[logging.Logger] = None,
+    prompt_debug: bool = False,
 ) -> None:
     """Run the main agent loop with OpenAPI-LLM integration.
 
@@ -212,6 +216,7 @@ def run_loop(
         poll_interval_sec: Base polling interval
         once: If True, run single iteration and exit
         logger: Optional logger instance
+        prompt_debug: If True, display LLM input prompts
     """
     store = SQLitePersistence(Path("agent.db"))
     store.connect()
@@ -227,6 +232,21 @@ def run_loop(
     openapi_client = _initialize_openapi_client(api_key, logger=log)
     tools = _get_tool_definitions(openapi_client)
     log.info("Loaded %d tool definitions", len(tools))
+    # Print tool names and argument names for quick visibility
+    for tool in tools:
+        func = tool.get("function", {})
+        name = func.get("name", tool.get("name", "(unknown)"))
+        params = func.get("parameters", {}).get("properties", {})
+        required = set(func.get("parameters", {}).get("required", []))
+        console.print(f"[green]Tool:[/green] {name}")
+        if params:
+            arg_list = []
+            for arg_name in params.keys():
+                suffix = " (required)" if arg_name in required else ""
+                arg_list.append(f"{arg_name}{suffix}")
+            console.print(f"[blue]Arguments:[/blue] {', '.join(arg_list)}")
+        else:
+            console.print("[blue]Arguments:[/blue] (none)")
 
     # Initialize OpenAI/Ollama client
     if OpenAI is None:
@@ -275,6 +295,11 @@ def run_loop(
             
             try:
                 prompt = STEP1_PROMPT_TEMPLATE.format(notes=notes, advisory=advisory)
+                
+                if prompt_debug:
+                    console.print(f"\n[yellow]LLM Prompt (STEP1):[/yellow]")
+                    console.print(prompt)
+                
                 response = llm_client.chat.completions.create(
                     model=DEFAULT_LLM_MODEL,
                     messages=[
@@ -288,6 +313,10 @@ def run_loop(
                     save_strategy_notes(store, ts, updated_notes, logger=log)
                     notes = updated_notes
                     log.info("Notes updated with human guidance")
+                    
+                    # Show updated notes
+                    console.print(f"\n[cyan]Updated Notes (from advisory):[/cyan]")
+                    console.print(updated_notes)
             except Exception as e:
                 log.error("Failed to update notes with advisory: %s", e)
         
@@ -312,6 +341,12 @@ def run_loop(
             # Check if tool was called
             if not message.tool_calls:
                 log.warning("LLM did not call a tool, retrying next iteration")
+                console.print(f"\n[red]⚠ LLM did not call a tool[/red]")
+                console.print(f"[yellow]LLM Response:[/yellow]")
+                console.print(message.content or "(no content)")
+                if prompt_debug:
+                    console.print(f"\n[yellow]The prompt that was sent (STEP2):[/yellow]")
+                    console.print(prompt)
                 if once:
                     break
                 time.sleep(poll_interval_sec)
@@ -322,11 +357,23 @@ def run_loop(
             log.info("LLM called tool: %s", tool_name)
             store.append_log(ts, "tool_call", tool_name)
             
+            # Show LLM decision
+            if prompt_debug:
+                console.print(f"\n[yellow]LLM Prompt (STEP2):[/yellow]")
+                console.print(prompt)
+            
+            console.print(f"\n[green]LLM Decision:[/green] Calling tool [bold]{tool_name}[/bold]")
+            console.print(f"  Arguments: {tool_call.function.arguments}")
+            
             # Execute tool via openapi_client
             try:
                 result = openapi_client.invoke(response)
                 store.append_log(ts, "tool_result", f"{tool_name}: success")
                 log.info("Tool executed successfully")
+                
+                # Show API response
+                console.print(f"\n[blue]API Response:[/blue]")
+                console.print_json(data=result)
                 
                 # Check for wait conditions
                 wait_duration = _extract_wait_duration(result, logger=log)
@@ -338,6 +385,7 @@ def run_loop(
                 result = {"error": str(e)}
                 store.append_log(ts, "tool_error", f"{tool_name}: {str(e)}")
                 log.error("Tool execution failed: %s", e)
+                console.print(f"\n[red]Tool Error:[/red] {e}")
         
         except Exception as e:
             log.error("Step 2 failed: %s", e)
@@ -352,6 +400,11 @@ def run_loop(
                 tool_name=tool_name,
                 result=result_str
             )
+            
+            if prompt_debug:
+                console.print(f"\n[yellow]LLM Prompt (STEP3):[/yellow]")
+                console.print(prompt)
+            
             response = llm_client.chat.completions.create(
                 model=DEFAULT_LLM_MODEL,
                 messages=[
@@ -364,6 +417,10 @@ def run_loop(
             if updated_notes:
                 save_strategy_notes(store, ts, updated_notes, logger=log)
                 log.info("Notes updated with tool results")
+                
+                # Show updated notes
+                console.print(f"\n[cyan]Updated Notes:[/cyan]")
+                console.print(updated_notes)
         except Exception as e:
             log.error("Failed to update notes with results: %s", e)
         

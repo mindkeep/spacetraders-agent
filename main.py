@@ -13,6 +13,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL_SEC, help="Polling interval seconds")
     parser.add_argument("--once", action="store_true", help="Run a single iteration and exit")
     parser.add_argument("--log-level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR)")
+    parser.add_argument("--prompt-debug", action="store_true", help="Show LLM input prompts (verbose)")
     return parser.parse_args()
 
 
@@ -23,8 +24,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
     logger = logging.getLogger("agent")
-    logger.info("Starting agent (once=%s, poll=%.2fs, input=%s)", args.once, args.poll_interval, args.input)
-    run_loop(input_path=args.input, poll_interval_sec=args.poll_interval, once=args.once, logger=logger)
+    logger.info("Starting agent (once=%s, poll=%.2fs, input=%s, prompt_debug=%s)", args.once, args.poll_interval, args.input, args.prompt_debug)
+    run_loop(input_path=args.input, poll_interval_sec=args.poll_interval, once=args.once, logger=logger, prompt_debug=args.prompt_debug)
 
 
 if __name__ == "__main__":
