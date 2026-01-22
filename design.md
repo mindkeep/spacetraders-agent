@@ -12,143 +12,141 @@ The guiding idea is simple:
 
 ## Design philosophy
 
-### Clear separation of concerns
+### LLM-managed state with Python execution
 
-* Python is the source of truth
+The agent now operates with the LLM maintaining game state in strategy notes rather than Python managing authoritative state.
 
-  * Game state
-  * Derived metrics and analysis
-  * Action validation
-  * API execution
-  * Persistence and scheduling
+* **LLM responsibilities:**
+  * Track complete game state in notes (ships, locations, credits, cargo, etc.)
+  * Maintain strategy and tactical plans
+  * Execute tool calls via OpenAPI
+  * Learn from results and errors
+  * Incorporate human guidance
+  * Decide when to wait (ships in transit, cooldowns, rate limits)
 
-* LLM is the source of intent
+* **Python responsibilities:**
+  * Provide OpenAPI tool definitions from SpaceTraders spec
+  * Execute tool calls through openapi_llm
+  * Persist notes and log history
+  * Handle rate limiting and wait states
+  * Capture and feed back execution errors
 
-  * Strategic reasoning
-  * Goal setting
-  * Planning and prioritization
-  * Interpreting human advice
-  * Maintaining editable strategy notes
-
-This separation is deliberate. It prevents the LLM from hallucinating state, issuing invalid actions, or corrupting history.
+This approach trusts the LLM to maintain accurate state by recording tool results in notes, making the system more autonomous and adaptive.
 
 ---
 
 ## The agent loop
 
-At a high level, the agent operates in a continuous loop:
+The agent operates in a 3-step cycle with LLM-managed state:
 
-1. Refresh game state
-   Pull authoritative data from the SpaceTraders API into Python-managed state.
+### Step 1: Incorporate Human Input (if present)
 
-2. Update operational notes
-   Record new facts, outcomes, and observations from the last iteration.
+When new advisory input arrives:
+* LLM reads current strategy notes
+* LLM reads human guidance
+* LLM updates notes to reflect new priorities or constraints
+* Human input becomes part of the strategic context
 
-3. Incorporate human advisory input
-   Read any new human guidance and treat it as strategic pressure, not a command.
+### Step 2: Execute Tool Call
 
-4. Strategic reasoning (LLM)
-   Rebuild the prompt using:
+Based on current notes and recent history:
+* LLM selects appropriate SpaceTraders API tool to call
+* Tool definitions provided via openapi_llm from OpenAPI spec
+* LLM can gather data (list ships, check markets) or take actions (navigate, trade)
+* Tool execution results or errors are captured
 
-   * Current game state (summarized)
-   * Current strategy notes
-   * Recent immutable log summaries
-   * Human advisory input
+### Step 3: Update Notes with Results
 
-5. Intent selection (LLM)
-   The LLM proposes a *structured intent*, describing what it wants to do and why.
+After tool execution:
+* LLM receives tool results (success data or error messages)
+* LLM updates strategy notes with:
+  * Current game state (ships, locations, credits, cargo)
+  * What just happened (action taken, data gathered)
+  * What to do next (immediate next steps)
+  * Wait states (ships in transit, cooldowns, rate limits)
+* Notes become the authoritative state for the next iteration
 
-6. Validation and execution (Python)
-   Python determines whether the intent is valid, gathers any missing information, and executes the appropriate API calls.
+### Wait Handling
 
-7. Persist state
-   Notes, logs, and state are saved for the next iteration.
+The loop intelligently pauses when:
+* **API rate limits** are encountered → wait prescribed duration
+* **Ships in transit** → wait until arrival time
+* **Cooldowns active** → wait until cooldown expires
+* **No immediate actions** → poll at reduced frequency
 
-8. Determine wait time
-   There will be times while ships are in transit or not available that there is nothing for the agent to do. Given this, the LLM may ask to wait longer before the next iteration, but we should still poll game state occassionally.
-
----
-
-## Notes as first-class state
-
-The agent maintains two distinct forms of memory.
-
-### 1. Immutable log (append-only)
-
-Purpose:
-
-* Preserve factual history
-* Support summarization and auditing
-
-Examples:
-
-* Trades executed
-* Systems entered
-* Credits gained or lost
-* Human advisory messages received
-
-This log is never rewritten.
+Wait states are detected from API responses and LLM note updates.
 
 ---
 
-### 2. Living strategy notes (editable)
+## Error feedback and learning
 
-Purpose:
+Execution errors guide the LLM's next decision:
 
-* Capture current goals and hypotheses
-* Maintain a working plan
-* Track assumptions and risks
+* When a tool call fails, Python captures:
+  * The tool that was called
+  * The error message from the API
+  * Full context (parameters, response)
 
-Examples:
+* Errors are logged in immutable history for audit
 
-* "Focus on fuel arbitrage in nearby systems"
-* "Allocate one ship to scouting"
-* "Avoid hostile regions until credits > X"
+* In Step 3, the LLM receives error information and:
+  * Updates notes with what went wrong
+  * Adjusts strategy to avoid repeating the mistake
+  * Plans alternative approaches
 
-These notes *can* be rewritten by the LLM as strategy evolves.
+This direct error-to-LLM feedback enables rapid adaptation without separate error context tables.
 
-Separating immutable history from mutable strategy prevents the agent from rewriting the past to justify new plans.
+---
+
+## Notes as complete game state
+
+Strategy notes now serve as the **single source of truth** for game state between iterations.
+
+The LLM maintains in notes:
+* **Current state:** ships (names, locations, status), credits, cargo, contracts
+* **Recent actions:** what tools were called, what happened
+* **Strategy:** current goals, priorities, plans
+* **Next steps:** immediate actions to take
+* **Wait states:** expected completion times, cooldowns
+
+Python trusts the LLM to maintain accurate state by:
+* Recording all tool results
+* Tracking identifiers (ship symbols, waypoint names, etc.)
+* Noting timing information (arrival times, cooldowns)
+
+This makes the agent more autonomous - the LLM has complete context and control.
 
 ---
 
 ## Human-in-the-loop design
 
-Humans are treated as strategic advisors, not operators.
+Humans provide strategic guidance through `input.md`:
 
-* Human input does not directly trigger actions
-* The LLM interprets advice and decides how (or whether) to adjust plans
-* The agent may partially comply, delay, or decline based on context
+* Human writes advisory text to `input.md`
+* Loop detects new input
+* LLM reads notes + human input in Step 1
+* LLM decides how to incorporate guidance
+* LLM updates notes to reflect new priorities
 
-This preserves agent autonomy while still allowing meaningful guidance.
-
-### Headless operation and advisory input
-
-* The process runs without a UI and is expected to stay up as a long-running service.
-* Human guidance arrives via `input.md`; the process should watch/tail this file for changes and ingest new advisory text when it appears.
-* Any future UI can layer on top, but `input.md` remains the canonical advisory channel so the agent can run unattended.
+The agent remains autonomous - it interprets and adapts human guidance rather than blindly following commands.
 
 ---
 
-## Intent-based control (not tool calls)
+## Direct tool calling (via openapi_llm)
 
-The LLM does not issue API calls.
+The LLM calls SpaceTraders API tools directly:
 
-Instead, it emits structured intents, for example:
+* Tool definitions generated from OpenAPI spec
+* LLM sees all available endpoints (except register)
+* LLM chooses tools based on strategy in notes
+* openapi_llm handles tool execution
+* Results flow back to LLM for note updates
 
-* Explore a region
-* Trade a commodity
-* Reposition a ship
-* Gather additional market data
-
-Each intent includes:
-
-* The goal
-* The reasoning
-* Any information required
-
-Python translates intents into concrete API actions.
-
-This indirection keeps execution deterministic and debuggable.
+Benefits:
+* Maximum flexibility - LLM can call any valid API endpoint
+* No Python translation layer between intent and action
+* Direct error messages improve learning
+* Self-documenting through OpenAPI schema
 
 ### Persistence and logging
 
@@ -180,17 +178,22 @@ If introduced, MCP would expose high-level actions, not raw API endpoints.
 
 ## Failure modes to guard against
 
-* LLM-driven rescheduling or tight loops
-* Overwriting historical facts
-* Thrashing strategies every iteration
-* Treating human advice as absolute commands
+* **State drift:** LLM must accurately record tool results in notes
+* **Rate limiting:** Respect API limits and wait appropriately  
+* **Tight loops:** Detect wait states to avoid wasted API calls
+* **Ignoring errors:** Ensure errors are incorporated into strategy
+* **Losing context:** Notes must retain critical identifiers and timing
 
-The current design explicitly mitigates these risks.
+The current design addresses these through:
+* Explicit note update step after each tool call
+* Wait detection from API responses
+* Error logging and feedback
+* LLM responsibility for state tracking
 
 ---
 
 ## Guiding principle
 
-> LLMs are good thinkers.
-> Computers are good bookkeepers.
-> Don’t confuse the two.
+> LLMs can track state in context.
+> Python handles tools and timing.
+> Trust the LLM to learn and adapt.
