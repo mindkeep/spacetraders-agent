@@ -26,13 +26,15 @@ except Exception:  # pragma: no cover
     OpenAPIClient = None  # type: ignore
 
 try:
-    import ollama
+    from openai import OpenAI
 except Exception:  # pragma: no cover
-    ollama = None  # type: ignore
+    OpenAI = None  # type: ignore
 
 
 console = Console()
-DEFAULT_LLM_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
+DEFAULT_LLM_MODEL = os.environ.get("OPENAI_MODEL", "mistral-nemo")
+OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE", "http://localhost:11434/v1")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "ollama")
 ENV_API_KEY = "SPACETRADERS_API_KEY"
 
 
@@ -96,6 +98,7 @@ def _format_api_response(response: Any, title: str = "API Response") -> None:
 
 
 def _llm_call(
+    llm_client: Any,
     tools: list[dict[str, Any]],
     user_message: str,
     logger: Optional[logging.Logger] = None,
@@ -103,6 +106,7 @@ def _llm_call(
     """Make a call to the LLM with available tools.
     
     Args:
+        llm_client: OpenAI client instance
         tools: List of available tool definitions
         user_message: The user message to send to the LLM
         logger: Optional logger instance
@@ -110,10 +114,10 @@ def _llm_call(
     Returns:
         The LLM's response or None if unavailable
     """
-    if ollama is None:
+    if llm_client is None:
         if logger:
-            logger.warning("Ollama not available; skipping LLM call")
-        console.print("[yellow]⚠ Ollama not available; cannot call LLM[/yellow]")
+            logger.warning("OpenAI client not available; skipping LLM call")
+        console.print("[yellow]⚠ OpenAI client not available; cannot call LLM[/yellow]")
         return None
 
     if logger:
@@ -121,7 +125,7 @@ def _llm_call(
 
     try:
         console.print("\n[bold cyan]Calling LLM...[/bold cyan]")
-        response = ollama.chat(
+        response = llm_client.chat.completions.create(
             model=DEFAULT_LLM_MODEL,
             messages=[{"role": "user", "content": user_message}],
             tools=tools,
@@ -130,16 +134,16 @@ def _llm_call(
         console.print("\n[bold cyan]LLM Response:[/bold cyan]")
         
         # Print the assistant's thinking/response
-        if "message" in response and response["message"]:
-            msg = response["message"]
-            if msg.get("content"):
-                console.print(f"[green]{msg['content']}[/green]")
+        if response.choices and response.choices[0].message:
+            msg = response.choices[0].message
+            if msg.content:
+                console.print(f"[green]{msg.content}[/green]")
             
             # Print tool calls if any
-            if msg.get("tool_calls"):
+            if msg.tool_calls:
                 console.print("\n[bold yellow]Tool Calls:[/bold yellow]")
-                for tool_call in msg["tool_calls"]:
-                    console.print_json(data=tool_call)
+                for tool_call in msg.tool_calls:
+                    console.print_json(data={"id": tool_call.id, "function": {"name": tool_call.function.name, "arguments": tool_call.function.arguments}})
         
         return response
     except Exception as e:
@@ -185,12 +189,11 @@ def run_loop_openapi_llm(
 ) -> None:
     """Run the OpenAPI-LLM agent loop.
     
-    This loop:
-    1. Initializes the OpenAPI client with SpaceTraders spec and credentials
-    2. Extracts tool definitions from OpenAPI spec (excluding register)
-    3. Prompts the LLM (via Ollama) to call tools to make credits
-    4. Uses openapi_client.invoke() to execute the LLM's tool calls
-    5. Repeats until stopped
+    Initializes the OpenAI client (pointing to local Ollama)
+    3. Extracts tool definitions from OpenAPI spec (excluding register)
+    4. Prompts the LLM (via OpenAI/Ollama) to call tools to make credits
+    5. Uses openapi_client.invoke() to execute the LLM's tool calls
+    6. Repeats until stopped
     
     Args:
         api_key: Optional SpaceTraders API key (defaults to env var)
@@ -211,6 +214,17 @@ def run_loop_openapi_llm(
     
     # Get tool definitions (excluding register)
     tools = _get_tool_definitions(openapi_client)
+    
+    # Initialize OpenAI client pointing to local Ollama
+    if OpenAI is None:
+        console.print("[red]✗ OpenAI client not available[/red]")
+        raise RuntimeError("OpenAI library not installed")
+    
+    llm_client = OpenAI(
+        api_key=OPENAI_API_KEY,
+        base_url=OPENAI_API_BASE,
+    )
+    console.print("[green]✓[/green] Initialized OpenAI client (Ollama backend)")
 
     # Main loop
     iteration = 0
@@ -226,7 +240,7 @@ def run_loop_openapi_llm(
         )
         
         # Call LLM
-        llm_response = _llm_call(tools, user_message, logger=log)
+        llm_response = _llm_call(llm_client, tools, user_message, logger=log)
         
         # Execute tool calls from the LLM response
         if llm_response:
