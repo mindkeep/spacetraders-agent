@@ -102,3 +102,7 @@ uv run python -c "from agent.loop import run_loop; run_loop(once=True)"
 ```bash
 uv run pytest
 ```
+
+## Alternate implementation (using openapi-llm)
+
+An alternate implementation of this project is found in the openapi_llm_agent directory. It generates an LLM tool to API bridge in more of a 1 to 1 fashion. I believe this implementation will work with a bigger model, but I'm walking away from this approach for the time being. It's still a bit rough, but might provide an nice start if someone wants to investigate this further. And it might be interesting to watch a bigger model try to use it!

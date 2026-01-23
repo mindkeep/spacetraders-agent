@@ -16,7 +16,7 @@ The guiding idea is simple:
 
 The agent now operates with the LLM maintaining game state in strategy notes rather than Python managing authoritative state.
 
-* **LLM responsibilities:**
+* LLM responsibilities:
   * Track complete game state in notes (ships, locations, credits, cargo, etc.)
   * Maintain strategy and tactical plans
   * Execute tool calls via OpenAPI
@@ -24,7 +24,7 @@ The agent now operates with the LLM maintaining game state in strategy notes rat
   * Incorporate human guidance
   * Decide when to wait (ships in transit, cooldowns, rate limits)
 
-* **Python responsibilities:**
+* Python responsibilities:
   * Provide OpenAPI tool definitions from SpaceTraders spec
   * Execute tool calls through openapi_llm
   * Persist notes and log history
@@ -69,10 +69,10 @@ After tool execution:
 ### Wait Handling
 
 The loop intelligently pauses when:
-* **API rate limits** are encountered → wait prescribed duration
-* **Ships in transit** → wait until arrival time
-* **Cooldowns active** → wait until cooldown expires
-* **No immediate actions** → poll at reduced frequency
+* API rate limits are encountered → wait prescribed duration
+* Ships in transit → wait until arrival time
+* Cooldowns active → wait until cooldown expires
+* No immediate actions → poll at reduced frequency
 
 Wait states are detected from API responses and LLM note updates.
 
@@ -100,14 +100,14 @@ This direct error-to-LLM feedback enables rapid adaptation without separate erro
 
 ## Notes as complete game state
 
-Strategy notes now serve as the **single source of truth** for game state between iterations.
+Strategy notes now serve as the single source of truth for game state between iterations.
 
 The LLM maintains in notes:
-* **Current state:** ships (names, locations, status), credits, cargo, contracts
-* **Recent actions:** what tools were called, what happened
-* **Strategy:** current goals, priorities, plans
-* **Next steps:** immediate actions to take
-* **Wait states:** expected completion times, cooldowns
+* Current state: ships (names, locations, status), credits, cargo, contracts
+* Recent actions: what tools were called, what happened
+* Strategy: current goals, priorities, plans
+* Next steps: immediate actions to take
+* Wait states: expected completion times, cooldowns
 
 Python trusts the LLM to maintain accurate state by:
 * Recording all tool results
@@ -178,11 +178,11 @@ If introduced, MCP would expose high-level actions, not raw API endpoints.
 
 ## Failure modes to guard against
 
-* **State drift:** LLM must accurately record tool results in notes
-* **Rate limiting:** Respect API limits and wait appropriately  
-* **Tight loops:** Detect wait states to avoid wasted API calls
-* **Ignoring errors:** Ensure errors are incorporated into strategy
-* **Losing context:** Notes must retain critical identifiers and timing
+* State drift: LLM must accurately record tool results in notes
+* Rate limiting: Respect API limits and wait appropriately  
+* Tight loops: Detect wait states to avoid wasted API calls
+* Ignoring errors: Ensure errors are incorporated into strategy
+* Losing context: Notes must retain critical identifiers and timing
 
 The current design addresses these through:
 * Explicit note update step after each tool call
