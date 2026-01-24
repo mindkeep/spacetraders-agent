@@ -1091,6 +1091,11 @@ dev = [
     { name = "pytest" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "openapi-generator-cli" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.26" },
@@ -1107,6 +1112,9 @@ requires-dist = [
     { name = "urllib3", specifier = ">=2.1.0,<3.0.0" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "openapi-generator-cli", specifier = ">=7.18.0" }]
 
 [[package]]
 name = "tqdm"

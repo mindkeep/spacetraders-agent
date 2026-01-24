@@ -110,3 +110,19 @@ def fetch_my_ships(client: ApiClient, page: int = 1, limit: int = 10, logger: Op
     api = FleetApi(client)
     resp = api.get_my_ships_without_preload_content(page=page, limit=limit)
     return _parse_response(resp, endpoint=endpoint, logger=logger)
+
+if __name__ == "__main__":
+    # Simple test of client and fetching agent info
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("spacetraders_client_test")
+
+    api_client = build_client(token=os.getenv(ENV_API_KEY))
+    if not api_client:
+        logger.error("API client could not be created. Check your API key.")
+        exit(1)
+
+    agent_result = fetch_my_agent(api_client, logger=logger)
+    if agent_result.ok:
+        logger.info("Fetched agent info successfully:\n%s", _pretty(agent_result.json))
+    else:
+        logger.error("Failed to fetch agent info: %s", agent_result.error or "Unknown error")

@@ -34,3 +34,8 @@ addopts = "-q"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent"]
+
+[dependency-groups]
+dev = [
+    "openapi-generator-cli>=7.18.0",
+]

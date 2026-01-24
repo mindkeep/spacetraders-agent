@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 
@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
 
-INTENT_JSON_SCHEMA = {
+INTENT_JSON_SCHEMA: Dict[str, Union[List[str], str]] = {
     "intent_type": [t.value for t in IntentType],
     "goal": "string",
     "reasoning": "string",
@@ -63,7 +63,7 @@ def _llm_plan(
         "Do not include extra text."
     )
 
-    user = {
+    user: Dict[str, Any] = {
         "state": state_snapshot or {},
         "notes": strategy_notes or "",
         "advisory": advisory_input or "",
@@ -86,7 +86,7 @@ def _llm_plan(
         intent_type_str = str(data.get("intent_type", "")).lower()
         if intent_type_str not in [t.value for t in IntentType]:
             return None
-        details = data.get("details") or {}
+        details: Dict[str, Any] = data.get("details") or {}
         return Intent(
             intent_type=IntentType(intent_type_str),
             goal=str(data.get("goal", "")) or "",
@@ -124,7 +124,7 @@ def plan_next_intent(
     # Deterministic fallback stub to keep tests and wiring intact
     goal = "Assess market opportunities"
     reasoning = "Placeholder: replace with LLM-driven strategy selection."
-    details = {
+    details: Dict[str, Any] = {
         "state_summary": bool(state_snapshot),
         "notes_present": bool(strategy_notes),
         "advisory_present": bool(advisory_input),
